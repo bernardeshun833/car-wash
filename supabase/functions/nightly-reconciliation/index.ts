@@ -74,12 +74,15 @@ async function runReconciliation(
       .eq("branch_id", branchId)
       .gte("timestamp", dayStart)
       .lte("timestamp", dayEnd),
+    // Every count for the shift, not just one: a corrected count appends a new
+    // row rather than replacing the first, and reconcile() decides which
+    // stands. maybeSingle() here would throw the moment a count was revised.
     supabase
       .from("cash_counts")
       .select("*")
       .eq("branch_id", branchId)
       .eq("shift_date", businessDate)
-      .maybeSingle(),
+      .order("created_at_local", { ascending: true }),
     supabase
       .from("vehicle_count_events")
       .select("id, event_time, in_zone_count, device_id, source")
@@ -100,7 +103,7 @@ async function runReconciliation(
 
   const posTransactions = (txnRes.data ?? []).map(toPosTransaction);
   const momoPayments = (momoRes.data ?? []).map(toMomoPayment);
-  const cashCount = cashRes.data ? toCashCount(cashRes.data) : null;
+  const cashCounts = (cashRes.data ?? []).map(toCashCount);
   const vehicleEvents = (vehicleRes.data ?? []).map(toVehicleEvent);
 
   const deviceGaps = computeDeviceGaps(
@@ -118,7 +121,7 @@ async function runReconciliation(
     branchId,
     posTransactions,
     momoPayments,
-    cashCount,
+    cashCounts,
     vehicleEvents,
     deviceGaps,
     baseline,
@@ -291,10 +294,13 @@ function toMomoPayment(row: Record<string, unknown>): MomoPayment {
 
 function toCashCount(row: Record<string, unknown>): CashCountRow {
   return {
+    id: row.id as string,
     counted_by: row.counted_by as string,
     actual: Number(row.actual),
     opening_float: Number(row.opening_float),
-    notes: (row.notes as string | null) ?? null
+    notes: (row.notes as string | null) ?? null,
+    created_at_local: row.created_at_local as string,
+    supersedes_id: (row.supersedes_id as string | null) ?? null
   };
 }
 

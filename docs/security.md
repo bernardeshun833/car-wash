@@ -36,6 +36,14 @@ Two consequences worth understanding:
 the manager can quietly fix a "typo" is a system where the manager can quietly
 fix anything.
 
+That cuts both ways, and the cash count is where the distinction matters. A
+mistyped count is corrected by recording a second count that supersedes the
+first; both rows stay, and the nightly report shows the revision and the figure
+it replaced. What append-only forbids is *rewriting* the record — it was never
+meant to make a typo permanent, and an earlier version of this schema that
+enforced one count per shift did exactly that (and wedged the sync queue while
+it was at it).
+
 **Match state needed somewhere to live.** Recording that a transaction matched a
 MoMo payment would require an UPDATE of an append-only table, so it lives in
 `transaction_matches`, and `momo_payments.matched_txn_id` is read through the

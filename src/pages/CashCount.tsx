@@ -17,15 +17,22 @@ export default function CashCount() {
     [shiftDate],
     []
   );
-  const alreadyCounted = useLiveQuery(
-    () => db.cashCounts.where("shift_date").equals(shiftDate).first(),
-    [shiftDate]
+  // All of today's counts, newest last. Normally one; more when the first was
+  // wrong and had to be corrected.
+  const countsToday = useLiveQuery(
+    async () => {
+      const rows = await db.cashCounts.where("shift_date").equals(shiftDate).toArray();
+      return rows.sort((a, b) => a.created_at_local.localeCompare(b.created_at_local));
+    },
+    [shiftDate],
+    []
   );
+  const latestCount = countsToday[countsToday.length - 1] ?? null;
 
   const [countedBy, setCountedBy] = useState("");
   const [actual, setActual] = useState("");
   const [notes, setNotes] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
 
   const openingFloat = settings?.opening_float ?? 0;
 
@@ -46,6 +53,8 @@ export default function CashCount() {
 
   const submit = async () => {
     if (!Number.isFinite(actualNumber) || countedBy.trim().length === 0) return;
+    if (correcting && notes.trim().length === 0) return;
+
     await queueCashCount({
       id: crypto.randomUUID(),
       branch_id: getBranchId(),
@@ -55,30 +64,60 @@ export default function CashCount() {
       actual: actualNumber,
       opening_float: openingFloat,
       notes: notes.trim() || null,
+      // A correction points at the count it replaces. Both rows are kept; the
+      // nightly report uses this one and shows the earlier figure alongside.
+      supersedes_id: correcting ? (latestCount?.id ?? null) : null,
       device_id: getDeviceId(),
       created_at_local: new Date().toISOString()
     });
-    setSaved(true);
+
+    setCorrecting(false);
+    setCountedBy("");
+    setActual("");
+    setNotes("");
     void sync();
   };
 
-  if (saved || alreadyCounted) {
-    const count = alreadyCounted;
+  if (latestCount && !correcting) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
         <p className="text-5xl">✓</p>
         <p className="text-2xl font-semibold">Cash count recorded for {shiftDate}</p>
-        {count && (
-          <p className="text-gray-400">
-            Counted GHS {count.actual.toFixed(2)} against GHS {count.expected.toFixed(2)}{" "}
-            expected · counted by {count.counted_by}
+        <p className="text-gray-400">
+          Counted GHS {latestCount.actual.toFixed(2)} against GHS{" "}
+          {latestCount.expected.toFixed(2)} expected · counted by{" "}
+          {latestCount.counted_by}
+        </p>
+
+        {countsToday.length > 1 && (
+          <p className="text-sm text-amber-300">
+            Corrected {countsToday.length - 1}{" "}
+            {countsToday.length === 2 ? "time" : "times"} — earlier figures:{" "}
+            {countsToday
+              .slice(0, -1)
+              .map((c) => `GHS ${c.actual.toFixed(2)}`)
+              .join(", ")}
           </p>
         )}
+
         <p className="max-w-md text-sm text-gray-500">
-          Counts cannot be edited. If this one was wrong, record the correction in
-          tonight's notes and tell the owner — the numbers are meant to be a record of
-          what was counted, not what should have been counted.
+          A count is never edited or deleted. If this figure is wrong, record a
+          corrected count — the original stays in the record, and tonight's report
+          shows both so the owner can see what changed.
         </p>
+
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => {
+            setCorrecting(true);
+            setCountedBy(latestCount.counted_by);
+            setActual("");
+            setNotes("");
+          }}
+        >
+          Record a corrected count
+        </button>
       </div>
     );
   }
@@ -86,12 +125,31 @@ export default function CashCount() {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 p-4">
       <div>
-        <h1 className="text-xl font-semibold">End of shift cash count</h1>
+        <h1 className="text-xl font-semibold">
+          {correcting ? "Corrected cash count" : "End of shift cash count"}
+        </h1>
         <p className="text-sm text-gray-400">
-          {shiftDate} · count the drawer with a second person present, and move anything
-          above the float to the safe
+          {correcting
+            ? `${shiftDate} · replaces the count of GHS ${latestCount?.actual.toFixed(2)}`
+            : `${shiftDate} · count the drawer with a second person present, and move anything above the float to the safe`}
         </p>
       </div>
+
+      {correcting && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-900/40 p-3 text-sm text-amber-100">
+          <span>
+            The earlier count stays in the record. Say why it changed so the owner is
+            not left guessing.
+          </span>
+          <button
+            type="button"
+            className="btn-secondary min-h-0 px-3 py-2"
+            onClick={() => setCorrecting(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-3 rounded-xl bg-gray-800 p-4 text-sm">
         <dt className="text-gray-400">Opening float</dt>
@@ -138,23 +196,33 @@ export default function CashCount() {
       )}
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm text-gray-400">Notes (optional)</span>
+        <span className="text-sm text-gray-400">
+          {correcting ? "Why is this being corrected? (required)" : "Notes (optional)"}
+        </span>
         <textarea
           className="rounded-xl border border-gray-700 bg-gray-800 p-4 text-base"
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Anything that explains a difference — a refund, a float top-up…"
+          placeholder={
+            correcting
+              ? "e.g. first count typed 12400 instead of 1240"
+              : "Anything that explains a difference — a refund, a float top-up…"
+          }
         />
       </label>
 
       <button
         type="button"
         className="btn-primary"
-        disabled={!Number.isFinite(actualNumber) || countedBy.trim().length === 0}
+        disabled={
+          !Number.isFinite(actualNumber) ||
+          countedBy.trim().length === 0 ||
+          (correcting && notes.trim().length === 0)
+        }
         onClick={submit}
       >
-        Record count
+        {correcting ? "Record corrected count" : "Record count"}
       </button>
     </div>
   );

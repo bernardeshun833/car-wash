@@ -68,7 +68,13 @@ export function emailHtml(
           report.cash_counted
         )} vs ${ghs(report.expected_cash)} <strong>(${
           report.cash_variance! >= 0 ? "+" : ""
-        }${report.cash_variance!.toFixed(2)})</strong></td></tr>`;
+        }${report.cash_variance!.toFixed(2)})</strong>${
+          report.superseded_cash_counts.length > 0
+            ? ` <span style="color:#64748b">(corrected from ${report.superseded_cash_counts
+                .map((c) => ghs(c.actual))
+                .join(", ")})</span>`
+            : ""
+        }</td></tr>`;
 
   const vehicleRow = !report.vehicles.checked
     ? `<tr><td style="padding:6px 0">Vehicles counted</td><td style="padding:6px 0;text-align:right;color:#64748b">${escapeHtml(

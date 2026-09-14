@@ -1,5 +1,6 @@
 import type {
   Baseline,
+  CashCountRow,
   MomoPayment,
   PosTransaction,
   ReconciliationInput,
@@ -114,18 +115,27 @@ export function at(time: string): string {
   return `${DATE}T${time}:00.000Z`;
 }
 
-export function input(overrides: Partial<ReconciliationInput> = {}): ReconciliationInput {
+/**
+ * Most tests care about one cash count, so they pass `cashCount:` and this
+ * wraps it into the list reconcile() actually takes. Tests about corrections
+ * pass `cashCounts:` directly.
+ */
+export function input(
+  overrides: Partial<ReconciliationInput> & { cashCount?: CashCountRow | null } = {}
+): ReconciliationInput {
+  const { cashCount, ...rest } = overrides;
+
   return {
     businessDate: DATE,
     branchId: BRANCH,
     posTransactions: [],
     momoPayments: [],
-    cashCount: null,
+    cashCounts: cashCount ? [cashCount] : [],
     vehicleEvents: [],
     deviceGaps: [],
     baseline: EMPTY_BASELINE,
     settings: SETTINGS,
-    ...overrides
+    ...rest
   };
 }
 
@@ -143,11 +153,37 @@ export function countingOn(
   return { ...SETTINGS, vehicle_counting_enabled: true, ...overrides };
 }
 
-export function cashCount(actual: number, openingFloat = 200) {
+export function cashCount(
+  actual: number,
+  openingFloat = 200,
+  overrides: Partial<CashCountRow> = {}
+): CashCountRow {
+  counter++;
   return {
+    id: `count-${counter}`,
     counted_by: "Ama & Kofi",
     actual,
     opening_float: openingFloat,
-    notes: null
+    notes: null,
+    created_at_local: `${DATE}T19:15:00.000Z`,
+    supersedes_id: null,
+    ...overrides
   };
+}
+
+/** A first count and the correction that replaces it. */
+export function correctedCashCount(
+  wrong: number,
+  right: number,
+  openingFloat = 200
+): CashCountRow[] {
+  const first = cashCount(wrong, openingFloat, {
+    created_at_local: `${DATE}T19:15:00.000Z`
+  });
+  const second = cashCount(right, openingFloat, {
+    created_at_local: `${DATE}T19:40:00.000Z`,
+    supersedes_id: first.id,
+    notes: "first count mistyped"
+  });
+  return [first, second];
 }

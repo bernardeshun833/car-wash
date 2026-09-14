@@ -59,6 +59,8 @@ export interface QueuedCashCount {
   actual: number;
   opening_float: number;
   notes: string | null;
+  /** Set when this count corrects an earlier one for the same shift. */
+  supersedes_id: string | null;
   device_id: string;
   created_at_local: string;
   sync_state: "pending" | "synced";
