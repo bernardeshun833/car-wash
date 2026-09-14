@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, queueTransaction, transactionsForLocalDate } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
+import { newId } from "../lib/ids";
 import { sync } from "../lib/sync";
 import type { Attendant, QueuedTransaction } from "../types";
 
@@ -121,25 +122,32 @@ function VoidDialog({
   onClose: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const confirm = async () => {
     setSaving(true);
+    setError(null);
 
-    await queueTransaction({
-      id: crypto.randomUUID(),
-      branch_id: getBranchId(),
-      attendant_id: txn.attendant_id,
-      service_id: txn.service_id,
-      amount: -txn.amount,
-      payment_method: txn.payment_method,
-      corrects_transaction_id: txn.id,
-      created_at_local: new Date().toISOString(),
-      device_id: getDeviceId()
-    });
+    try {
+      await queueTransaction({
+        id: newId(),
+        branch_id: getBranchId(),
+        attendant_id: txn.attendant_id,
+        service_id: txn.service_id,
+        amount: -txn.amount,
+        payment_method: txn.payment_method,
+        corrects_transaction_id: txn.id,
+        created_at_local: new Date().toISOString(),
+        device_id: getDeviceId()
+      });
 
-    setSaving(false);
-    onClose();
-    void sync();
+      onClose();
+      void sync();
+    } catch (e) {
+      setError(`Could not void: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -151,6 +159,7 @@ function VoidDialog({
             This adds a correction entry. The original stays in the record.
           </p>
         </div>
+        {error && <p className="text-red-300">{error}</p>}
         <div className="flex gap-3">
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             Cancel

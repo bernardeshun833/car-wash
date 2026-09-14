@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, queueTransaction } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
+import { newId } from "../lib/ids";
 import { sync } from "../lib/sync";
 import type { Attendant, PaymentMethod, WashService } from "../types";
 
@@ -43,6 +44,7 @@ export default function TransactionEntry({ attendant }: { attendant: Attendant }
   const [service, setService] = useState<WashService | null>(null);
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
     setStep("service");
@@ -52,26 +54,40 @@ export default function TransactionEntry({ attendant }: { attendant: Attendant }
 
   const record = async (chosenService: WashService, chosenMethod: PaymentMethod) => {
     setSaving(true);
+    setError(null);
 
-    // Written to storage before anything touches the network. The wash is
-    // durable the moment it is tapped, whatever the connection is doing.
-    await queueTransaction({
-      id: crypto.randomUUID(),
-      branch_id: getBranchId(),
-      attendant_id: attendant.id,
-      service_id: chosenService.id,
-      amount: chosenService.price,
-      payment_method: chosenMethod,
-      corrects_transaction_id: null,
-      created_at_local: new Date().toISOString(),
-      device_id: getDeviceId()
-    });
+    // Anything that throws in here used to leave the screen completely
+    // unchanged — the attendant taps a price, nothing happens, and the wash is
+    // silently not recorded. On a POS that is the worst possible failure: it
+    // looks like a dead button and reads, later, as a wash that never
+    // happened. Whatever goes wrong now says so on screen.
+    try {
 
-    setService(chosenService);
-    setMethod(chosenMethod);
-    setSaving(false);
-    setStep("done");
-    void sync();
+      // Written to storage before anything touches the network. The wash is
+      // durable the moment it is tapped, whatever the connection is doing.
+      await queueTransaction({
+        id: newId(),
+        branch_id: getBranchId(),
+        attendant_id: attendant.id,
+        service_id: chosenService.id,
+        amount: chosenService.price,
+        payment_method: chosenMethod,
+        corrects_transaction_id: null,
+        created_at_local: new Date().toISOString(),
+        device_id: getDeviceId()
+      });
+
+      setService(chosenService);
+      setMethod(chosenMethod);
+      setStep("done");
+      void sync();
+    } catch (e) {
+      setError(
+        `Could not save this wash: ${e instanceof Error ? e.message : String(e)}`
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (step === "done") {
@@ -93,6 +109,10 @@ export default function TransactionEntry({ attendant }: { attendant: Attendant }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
+      {error && (
+        <p className="rounded-xl bg-red-900/60 p-3 text-red-100">{error}</p>
+      )}
+
       {step === "service" && (
         <>
           <h1 className="text-xl font-semibold">Which wash?</h1>

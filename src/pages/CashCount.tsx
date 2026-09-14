@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, queueCashCount, transactionsForLocalDate } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
+import { newId } from "../lib/ids";
 import { sync } from "../lib/sync";
 import type { Attendant } from "../types";
 
@@ -34,6 +35,8 @@ export default function CashCount({ attendant }: { attendant: Attendant }) {
   const [actual, setActual] = useState("");
   const [notes, setNotes] = useState("");
   const [correcting, setCorrecting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const openingFloat = settings?.opening_float ?? 0;
 
@@ -55,27 +58,41 @@ export default function CashCount({ attendant }: { attendant: Attendant }) {
     if (!Number.isFinite(actualNumber) || countedBy.trim().length === 0) return;
     if (correcting && notes.trim().length === 0) return;
 
-    await queueCashCount({
-      id: crypto.randomUUID(),
-      branch_id: getBranchId(),
-      shift_date: shiftDate,
-      counted_by: countedBy.trim(),
-      expected,
-      actual: actualNumber,
-      opening_float: openingFloat,
-      notes: notes.trim() || null,
-      // A correction points at the count it replaces. Both rows are kept; the
-      // nightly report uses this one and shows the earlier figure alongside.
-      supersedes_id: correcting ? (latestCount?.id ?? null) : null,
-      device_id: getDeviceId(),
-      created_at_local: new Date().toISOString()
-    });
+    setSaving(true);
+    setError(null);
 
-    setCorrecting(false);
-    setCountedBy("");
-    setActual("");
-    setNotes("");
-    void sync();
+    // A silent failure here is worse than elsewhere: the drawer has already
+    // been counted, the person walks away believing it is recorded, and the
+    // nightly report says no count was taken at all.
+    try {
+      await queueCashCount({
+        id: newId(),
+        branch_id: getBranchId(),
+        shift_date: shiftDate,
+        counted_by: countedBy.trim(),
+        expected,
+        actual: actualNumber,
+        opening_float: openingFloat,
+        notes: notes.trim() || null,
+        // A correction points at the count it replaces. Both rows are kept;
+        // the nightly report uses this one and shows the earlier figure.
+        supersedes_id: correcting ? (latestCount?.id ?? null) : null,
+        device_id: getDeviceId(),
+        created_at_local: new Date().toISOString()
+      });
+
+      setCorrecting(false);
+      setCountedBy(attendant.name);
+      setActual("");
+      setNotes("");
+      void sync();
+    } catch (e) {
+      setError(
+        `Could not save this count: ${e instanceof Error ? e.message : String(e)}`
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (latestCount && !correcting) {
@@ -163,6 +180,10 @@ export default function CashCount({ attendant }: { attendant: Attendant }) {
         <dd className="text-right">GHS {openingFloat.toFixed(2)}</dd>
       </dl>
 
+      {error && (
+        <p className="rounded-xl bg-red-900/60 p-3 text-red-100">{error}</p>
+      )}
+
       <label className="flex flex-col gap-2">
         <span className="text-sm text-gray-400">Counted by</span>
         <input
@@ -206,13 +227,18 @@ export default function CashCount({ attendant }: { attendant: Attendant }) {
         type="button"
         className="btn-primary"
         disabled={
+          saving ||
           !Number.isFinite(actualNumber) ||
           countedBy.trim().length === 0 ||
           (correcting && notes.trim().length === 0)
         }
         onClick={submit}
       >
-        {correcting ? "Record corrected count" : "Record count"}
+        {saving
+          ? "Saving…"
+          : correcting
+            ? "Record corrected count"
+            : "Record count"}
       </button>
     </div>
   );
