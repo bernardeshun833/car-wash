@@ -131,6 +131,24 @@ design and the vendor-selection checklist; in short:
 npm run count-agent      # runs against the simulated feed
 ```
 
+## Trying it without setting anything up
+
+```bash
+npm install
+npm test          # the reconciliation logic — 83 tests, no backend needed
+npm run dev:demo  # the whole tablet app, no Supabase, no account, no keys
+```
+
+Demo mode builds the attendant and price lists into the app and keeps
+everything on the device. It is for judging the screens on a real phone before
+committing to any infrastructure; it cannot show the nightly report, which runs
+server-side. Pushing to this branch publishes it to GitHub Pages (enable
+Settings → Pages → Source: GitHub Actions once), which matters because a phone
+needs HTTPS for PIN verification to work at all.
+
+Full instructions, including the phone and the local Supabase stack, are in
+`docs/testing.md`.
+
 ## Running it locally
 
 ```bash

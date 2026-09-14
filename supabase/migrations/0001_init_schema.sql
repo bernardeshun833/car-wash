@@ -133,12 +133,25 @@ create table cash_counts (
   created_at_local timestamptz not null,
   synced_at timestamptz not null default now(),
 
-  -- One count per branch per shift. Scoped by branch so a second site does
-  -- not collide with the first.
-  unique (branch_id, shift_date)
+  -- A later count for the same shift supersedes the earlier one rather than
+  -- replacing it. Both rows stay, exactly like a voided transaction.
+  --
+  -- There is deliberately NO unique constraint on (branch_id, shift_date).
+  -- Having one looked right — one count per shift is the SOP — but it made a
+  -- mistyped count permanent and unfixable, and worse, it broke the queue: a
+  -- second count carries a new id, so the sync engine's id-based upsert could
+  -- not absorb it, the insert failed on the date constraint, and the row
+  -- retried forever while the tablet showed "1 waiting to sync" that never
+  -- cleared. Append-only is about not rewriting history; it is not a reason to
+  -- make a typo permanent or to wedge the queue.
+  --
+  -- Optional and only for a correction: which count this one replaces. Null on
+  -- the first count of a shift.
+  supersedes_id uuid references cash_counts(id)
 );
 
 create index cash_counts_branch_date_idx on cash_counts (branch_id, shift_date);
+create index cash_counts_supersedes_idx on cash_counts (supersedes_id);
 
 -- ---------------------------------------------------------------------------
 -- NEW — no barbershop equivalent.

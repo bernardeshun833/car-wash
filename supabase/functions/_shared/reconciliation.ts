@@ -53,10 +53,15 @@ export interface MomoPayment {
 }
 
 export interface CashCountRow {
+  id: string;
   counted_by: string;
   actual: number;
   opening_float: number;
   notes: string | null;
+  /** When the drawer was counted, per the device. Orders corrections. */
+  created_at_local: string;
+  /** Set when this count corrects an earlier one for the same shift. */
+  supersedes_id: string | null;
 }
 
 /** One vehicle arrival, as stored in vehicle_count_events. */
@@ -111,7 +116,11 @@ export interface ReconciliationInput {
   branchId: string;
   posTransactions: PosTransaction[];
   momoPayments: MomoPayment[];
-  cashCount: CashCountRow | null;
+  /**
+   * Every count recorded for this shift, in any order. Usually one; more when
+   * the first was wrong. The latest is the one that counts — see pickCashCount.
+   */
+  cashCounts: CashCountRow[];
   vehicleEvents: VehicleCountEvent[];
   deviceGaps: DeviceGap[];
   baseline: Baseline;
@@ -123,6 +132,7 @@ export type FlagKind =
   | "unmatched_pos_digital"
   | "cash_variance"
   | "missing_cash_count"
+  | "cash_count_corrected"
   | "volume_drop"
   | "attendant_volume_drop"
   | "cash_ratio_spike"
@@ -180,6 +190,10 @@ export interface BusinessDateReport {
   expected_cash: number;
   cash_counted: number | null;
   cash_variance: number | null;
+  /** Counts recorded for this shift. More than one means a correction. */
+  cash_counts_recorded: number;
+  /** Superseded counts, oldest first, so a correction stays auditable. */
+  superseded_cash_counts: { id: string; actual: number; counted_by: string }[];
   expected_txn_count: number | null;
   volume_drop_pct: number | null;
   vehicles: VehicleComparison;
@@ -190,6 +204,42 @@ export interface BusinessDateReport {
   corrections: { correction_id: string; corrects: string; amount: number }[];
   flags: Flag[];
   baseline_available: boolean;
+}
+
+/**
+ * Which of a shift's cash counts is the real one.
+ *
+ * The latest count wins, ordered by when the drawer was counted on the device.
+ * A count that explicitly supersedes another is always treated as later than
+ * the one it replaces, even if the clocks disagree — an explicit statement of
+ * intent beats a timestamp from a tablet whose clock nobody guarantees.
+ *
+ * Earlier counts are returned rather than discarded: they stay in the database
+ * and in the report, so a revision is visible as a revision.
+ */
+export function pickCashCount(counts: CashCountRow[]): {
+  effective: CashCountRow | null;
+  superseded: CashCountRow[];
+} {
+  if (counts.length === 0) return { effective: null, superseded: [] };
+
+  const supersededIds = new Set(
+    counts.map((c) => c.supersedes_id).filter((id): id is string => id !== null)
+  );
+
+  const ordered = [...counts].sort(
+    (a, b) => Date.parse(a.created_at_local) - Date.parse(b.created_at_local)
+  );
+
+  // Anything explicitly replaced is out, whatever its timestamp says. Of what
+  // remains, the last counted is the one that stands.
+  const live = ordered.filter((c) => !supersededIds.has(c.id));
+  const effective = live[live.length - 1] ?? ordered[ordered.length - 1]!;
+
+  return {
+    effective,
+    superseded: ordered.filter((c) => c.id !== effective.id)
+  };
 }
 
 export function maxSeverity(a: Severity, b: Severity): Severity {
@@ -232,9 +282,9 @@ function padTime(time: string): string {
 }
 
 export function reconcile(input: ReconciliationInput): BusinessDateReport {
-  // vehicleEvents is read by compareVehicleCount, which takes the whole input.
-  const { posTransactions, momoPayments, cashCount, deviceGaps, baseline, settings } =
-    input;
+  // vehicleEvents and cashCounts are read further down — the first by
+  // compareVehicleCount, which takes the whole input, the second by Check B.
+  const { posTransactions, momoPayments, deviceGaps, baseline, settings } = input;
 
   const flags: Flag[] = [];
   let severity: Severity = "NONE";
@@ -376,6 +426,27 @@ export function reconcile(input: ReconciliationInput): BusinessDateReport {
   // expected_cash is recomputed here from POS data rather than trusting the
   // `expected` the tablet submitted, so a wrong number on the device cannot
   // paper over a real variance.
+  const { effective: cashCount, superseded } = pickCashCount(input.cashCounts);
+
+  if (superseded.length > 0) {
+    // Not an accusation — a mistyped count is the ordinary case, and a system
+    // that made it unfixable would just teach people to leave it wrong. But
+    // the owner should see that the figure was revised, and by how much.
+    const previous = superseded[superseded.length - 1]!;
+    flag({
+      kind: "cash_count_corrected",
+      severity: "LOW",
+      message: `The cash count was corrected — recorded as GHS ${previous.actual.toFixed(
+        2
+      )}, then as GHS ${cashCount!.actual.toFixed(2)}`,
+      details: {
+        superseded: superseded.map((c) => ({ id: c.id, actual: c.actual })),
+        effective_id: cashCount!.id,
+        notes: cashCount!.notes
+      }
+    });
+  }
+
   const openingFloat = cashCount?.opening_float ?? settings.opening_float;
   const expectedCash = round2(posCashTotal + openingFloat);
   const cashVariance = cashCount ? round2(cashCount.actual - expectedCash) : null;
@@ -515,6 +586,12 @@ export function reconcile(input: ReconciliationInput): BusinessDateReport {
     expected_cash: expectedCash,
     cash_counted: cashCount?.actual ?? null,
     cash_variance: cashVariance,
+    cash_counts_recorded: input.cashCounts.length,
+    superseded_cash_counts: superseded.map((c) => ({
+      id: c.id,
+      actual: c.actual,
+      counted_by: c.counted_by
+    })),
     expected_txn_count: expectedCount,
     volume_drop_pct: volumeDropPct,
     vehicles,
