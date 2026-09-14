@@ -1,0 +1,24 @@
+{
+  // Cloudflare Workers deployment for the tablet app.
+  //
+  // There is no Worker script here on purpose: this is a static site (a Vite
+  // PWA), so the whole deployment is the built `dist` folder served from
+  // Cloudflare's edge. `npx wrangler deploy` reads this file and uploads it.
+  //
+  // Custom domains are attached in the dashboard after the first deploy —
+  // Workers & Pages → car-wash → Settings → Domains & Routes. HTTPS is issued
+  // automatically, which the app needs: browsers withhold crypto.subtle
+  // outside a secure context, and without it PIN verification cannot run.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "car-wash",
+  "compatibility_date": "2026-09-01",
+
+  "assets": {
+    "directory": "./dist",
+
+    // The app is a single-page app with client-side routing (/today,
+    // /cash-count). Without this, a refresh on those URLs — or the phone
+    // reopening the installed app on one — returns a 404 instead of the app.
+    "not_found_handling": "single-page-application"
+  }
+}
