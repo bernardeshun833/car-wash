@@ -1,6 +1,7 @@
 import { db, getMeta, pendingCashCounts, pendingTransactions, setMeta } from "./db";
 import { supabase } from "./supabase";
 import { getBranchId, getDeviceId, setBranchId } from "./device";
+import { DEMO_MODE } from "./demo";
 import type { Attendant, BranchSettings, WashService } from "../types";
 
 /** Every few minutes when online, not once a day. */
@@ -39,6 +40,12 @@ export async function sync(): Promise<SyncResult> {
 }
 
 async function runSync(): Promise<SyncResult> {
+  // Demo mode has no backend. Returning before any network call is what keeps
+  // the demo honest: nothing is sent, and nothing pretends to have been sent.
+  if (DEMO_MODE) {
+    return { pushed: 0, failed: 0, refreshed: false, error: "demo" };
+  }
+
   if (!navigator.onLine) {
     return { pushed: 0, failed: 0, refreshed: false, error: "offline" };
   }
@@ -181,6 +188,9 @@ export function nextSyncDelay(): number {
  * system is trying to keep small.
  */
 export function startSyncLoop(onResult?: (result: SyncResult) => void): () => void {
+  // No backend, no loop — and no pointless retry timer burning phone battery.
+  if (DEMO_MODE) return () => {};
+
   let timer: number | undefined;
   let stopped = false;
 

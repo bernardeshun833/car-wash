@@ -5,6 +5,8 @@ dev-dist/
 .env
 .env.*
 !.env.example
+# Committed deliberately: demo mode has no credentials in it, only a flag.
+!.env.demo
 .DS_Store
 supabase/.branches/
 supabase/.temp/

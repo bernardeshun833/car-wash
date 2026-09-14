@@ -7,12 +7,39 @@ import TodayLog from "./pages/TodayLog";
 import TransactionEntry from "./pages/TransactionEntry";
 import { db } from "./lib/db";
 import { supabase } from "./lib/supabase";
+import { DEMO_MODE, resetDemoData, seedDemoData } from "./lib/demo";
 
 const TABS = [
   { to: "/", label: "New wash" },
   { to: "/today", label: "Today" },
   { to: "/cash-count", label: "Cash count" }
 ];
+
+/**
+ * Replaces the sync bar in demo mode. It says the one thing someone trying the
+ * app needs to know — nothing here leaves the phone — rather than showing a
+ * sync status that would be a fiction.
+ */
+function DemoBar() {
+  return (
+    <div className="flex items-center justify-between gap-2 bg-sky-900/70 px-4 py-2 text-sm text-sky-100">
+      <span className="font-medium">
+        Demo · stays on this phone · PINs 1234 / 2345 / 3456
+      </span>
+      <button
+        type="button"
+        className="rounded-lg border border-sky-300/50 px-3 py-1"
+        onClick={() => {
+          if (confirm("Clear everything logged in this demo?")) {
+            void resetDemoData();
+          }
+        }}
+      >
+        Reset
+      </button>
+    </div>
+  );
+}
 
 export default function App() {
   const status = useSyncStatus();
@@ -21,6 +48,14 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
+      // Demo mode: load the built-in catalogue and skip everything that needs
+      // a backend. There is no sign-in because there is nothing to sign in to.
+      if (DEMO_MODE) {
+        await seedDemoData();
+        setReady(true);
+        return;
+      }
+
       // Sign-in is best effort. A tablet that cannot reach Supabase must still
       // reach the wash entry screen — that is the entire point of
       // offline-first, and a failed auth call is exactly what happens when the
@@ -56,7 +91,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <SyncStatusBar status={status} />
+      {DEMO_MODE ? <DemoBar /> : <SyncStatusBar status={status} />}
 
       <nav className="flex gap-1 border-b border-gray-800 px-2">
         {TABS.map((tab) => (
