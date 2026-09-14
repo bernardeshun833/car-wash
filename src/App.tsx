@@ -8,6 +8,8 @@ import TransactionEntry from "./pages/TransactionEntry";
 import { db } from "./lib/db";
 import { supabase } from "./lib/supabase";
 import { DEMO_MODE, resetDemoData, seedDemoData } from "./lib/demo";
+import PinLock from "./components/PinLock";
+import type { Attendant } from "./types";
 
 const TABS = [
   { to: "/", label: "New wash" },
@@ -24,7 +26,7 @@ function DemoBar() {
   return (
     <div className="flex items-center justify-between gap-2 bg-sky-900/70 px-4 py-2 text-sm text-sky-100">
       <span className="font-medium">
-        Demo · stays on this phone · PINs 1234 / 2345 / 3456
+        Demo · stays on this phone · PIN 1234
       </span>
       <button
         type="button"
@@ -45,6 +47,10 @@ export default function App() {
   const status = useSyncStatus();
   const [ready, setReady] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+
+  // Who is on shift. Held in memory only: a reload or a restart locks the app
+  // again, so a phone left on a bench is not an open till.
+  const [attendant, setAttendant] = useState<Attendant | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -89,6 +95,17 @@ export default function App() {
     );
   }
 
+  // Nothing is reachable until a PIN is accepted — not the price list, not the
+  // day's takings, not the cash count.
+  if (!attendant) {
+    return (
+      <div className="flex h-full flex-col">
+        {DEMO_MODE ? <DemoBar /> : <SyncStatusBar status={status} />}
+        <PinLock onUnlock={setAttendant} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       {DEMO_MODE ? <DemoBar /> : <SyncStatusBar status={status} />}
@@ -114,11 +131,22 @@ export default function App() {
         <p className="bg-amber-900/60 px-4 py-3 text-amber-100">{setupError}</p>
       )}
 
+      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2 text-sm text-gray-400">
+        <span>On shift: {attendant.name}</span>
+        <button
+          type="button"
+          className="rounded-lg border border-gray-700 px-3 py-1"
+          onClick={() => setAttendant(null)}
+        >
+          Lock
+        </button>
+      </div>
+
       <main className="flex flex-1 flex-col overflow-y-auto">
         <Routes>
-          <Route path="/" element={<TransactionEntry />} />
+          <Route path="/" element={<TransactionEntry attendant={attendant} />} />
           <Route path="/today" element={<TodayLog />} />
-          <Route path="/cash-count" element={<CashCount />} />
+          <Route path="/cash-count" element={<CashCount attendant={attendant} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

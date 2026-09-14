@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import NumPad from "../components/NumPad";
 import { db, queueTransaction } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
-import { verifyPin } from "../lib/pin";
 import { sync } from "../lib/sync";
 import type { Attendant, PaymentMethod, WashService } from "../types";
 
-type Step = "attendant" | "service" | "payment" | "pin" | "done";
+type Step = "service" | "payment" | "done";
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string; digital: boolean }[] = [
   { value: "cash", label: "Cash", digital: false },
@@ -17,75 +15,61 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string; digital: boolean }
 ];
 
 /**
- * PIN per transaction, kept from the barbershop and kept deliberately.
+ * Logging a wash.
  *
- * How many attendants the wash actually has is still unconfirmed, and the
- * answer does not change this screen. Even if it turns out one person works
- * every shift — making attribution moot — the PIN step is what stamps an
- * entry with a verified moment in time, and those timestamps are what the
- * reconciliation windows are built on. It is cheap to keep and expensive to
- * add back later.
+ * The attendant is whoever unlocked the app, so there is no "who washed it?"
+ * step and no PIN to retype per car. On a cash-only site with one attendant
+ * that reduces a wash to a single tap on the price — which is the point. The
+ * slower the screen, the more likely a busy attendant logs nothing now and
+ * reconstructs the day later from memory, and a day reconstructed from memory
+ * is worth nothing to the reconciliation.
+ *
+ * The record keeps everything it kept before: attendant id, a verified unlock,
+ * and the moment the wash was logged.
  */
-export default function TransactionEntry() {
-  const attendants = useLiveQuery(() => db.attendants.toArray(), [], [] as Attendant[]);
+export default function TransactionEntry({ attendant }: { attendant: Attendant }) {
   const services = useLiveQuery(() => db.services.toArray(), [], [] as WashService[]);
   const settings = useLiveQuery(() => db.settings.get("current"), []);
 
-  // Cash only until the MoMo merchant account is live. The digital tiles are
-  // hidden rather than removed: turning them on is a database flag and the
-  // next sync, with no new build. Defaults to cash-only when settings have
-  // not synced yet, so a fresh tablet cannot offer a payment method the
-  // business cannot actually reconcile.
+  // Cash only until the MoMo merchant account is live. Defaults to cash-only
+  // when settings have not synced yet, so a fresh device cannot offer a
+  // payment method the business cannot reconcile.
   const paymentMethods = PAYMENT_METHODS.filter(
     (m) => !m.digital || settings?.momo_enabled === true
   );
+  const singleMethod = paymentMethods.length === 1 ? paymentMethods[0]! : null;
 
-  const [step, setStep] = useState<Step>("attendant");
-  const [attendant, setAttendant] = useState<Attendant | null>(null);
+  const [step, setStep] = useState<Step>("service");
   const [service, setService] = useState<WashService | null>(null);
   const [method, setMethod] = useState<PaymentMethod | null>(null);
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const reset = () => {
-    setStep("attendant");
-    setAttendant(null);
+    setStep("service");
     setService(null);
     setMethod(null);
-    setPin("");
-    setError(null);
   };
 
-  const confirm = async () => {
-    if (!attendant || !service || !method) return;
-    setChecking(true);
-    setError(null);
+  const record = async (chosenService: WashService, chosenMethod: PaymentMethod) => {
+    setSaving(true);
 
-    const ok = await verifyPin(pin, attendant);
-    if (!ok) {
-      setChecking(false);
-      setPin("");
-      setError(`That is not ${attendant.name.split(" ")[0]}'s PIN`);
-      return;
-    }
-
-    // Written to IndexedDB before anything touches the network. The wash is
-    // durable the moment the PIN is accepted, whatever the connection is
-    // doing.
+    // Written to storage before anything touches the network. The wash is
+    // durable the moment it is tapped, whatever the connection is doing.
     await queueTransaction({
       id: crypto.randomUUID(),
       branch_id: getBranchId(),
       attendant_id: attendant.id,
-      service_id: service.id,
-      amount: service.price,
-      payment_method: method,
+      service_id: chosenService.id,
+      amount: chosenService.price,
+      payment_method: chosenMethod,
       corrects_transaction_id: null,
       created_at_local: new Date().toISOString(),
       device_id: getDeviceId()
     });
 
-    setChecking(false);
+    setService(chosenService);
+    setMethod(chosenMethod);
+    setSaving(false);
     setStep("done");
     void sync();
   };
@@ -97,8 +81,7 @@ export default function TransactionEntry() {
           <p className="text-5xl">✓</p>
           <p className="mt-4 text-2xl font-semibold">Wash recorded</p>
           <p className="mt-2 text-gray-400">
-            {service?.wash_type} · GHS {service?.price.toFixed(2)} · {method} ·{" "}
-            {attendant?.name}
+            {service?.wash_type} · GHS {service?.price.toFixed(2)} · {method}
           </p>
         </div>
         <button type="button" className="btn-primary max-w-sm" onClick={reset}>
@@ -109,155 +92,71 @@ export default function TransactionEntry() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <StepHeader
-        step={step}
-        attendant={attendant}
-        service={service}
-        method={method}
-        onBack={() => {
-          setError(null);
-          if (step === "service") setStep("attendant");
-          if (step === "payment") setStep("service");
-          if (step === "pin") {
-            setPin("");
-            // Skip the payment step on the way back too, when it was skipped
-            // on the way in.
-            setStep(paymentMethods.length === 1 ? "service" : "payment");
-          }
-        }}
-      />
-
-      {step === "attendant" && (
-        <Grid>
-          {attendants.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className="tile"
-              onClick={() => {
-                setAttendant(a);
-                setStep("service");
-              }}
-            >
-              {a.name}
-            </button>
-          ))}
-        </Grid>
-      )}
-
+    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
       {step === "service" && (
-        <Grid>
-          {services.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="tile flex-col gap-1"
-              onClick={() => {
-                setService(s);
-                // With only one payment method there is nothing to choose;
-                // making the attendant tap "Cash" every time is a tap that
-                // teaches them to tap without reading.
-                if (paymentMethods.length === 1) {
-                  setMethod(paymentMethods[0].value);
-                  setStep("pin");
-                } else {
-                  setStep("payment");
-                }
-              }}
-            >
-              <span>{s.wash_type}</span>
-              <span className="text-sm text-gray-400">GHS {s.price.toFixed(2)}</span>
-            </button>
-          ))}
-        </Grid>
-      )}
-
-      {step === "payment" && (
-        <Grid>
-          {paymentMethods.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              className="tile"
-              onClick={() => {
-                setMethod(m.value);
-                setStep("pin");
-              }}
-            >
-              {m.label}
-            </button>
-          ))}
-        </Grid>
-      )}
-
-      {step === "pin" && attendant && (
-        <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-4">
-          <p className="text-center text-lg">{attendant.name}, enter your PIN to confirm</p>
-          <div className="flex justify-center gap-3">
-            {[0, 1, 2, 3].map((i) => (
-              <span
-                key={i}
-                className={`h-4 w-4 rounded-full ${
-                  i < pin.length ? "bg-emerald-400" : "bg-gray-700"
-                }`}
-              />
+        <>
+          <h1 className="text-xl font-semibold">Which wash?</h1>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {services.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className="tile flex-col gap-1"
+                disabled={saving}
+                onClick={() => {
+                  // One payment method means nothing to choose: record it
+                  // straight away rather than making the attendant tap "Cash"
+                  // on every car, which only teaches them to tap without
+                  // reading.
+                  if (singleMethod) {
+                    void record(s, singleMethod.value);
+                  } else {
+                    setService(s);
+                    setStep("payment");
+                  }
+                }}
+              >
+                <span>{s.wash_type}</span>
+                <span className="text-sm text-gray-400">GHS {s.price.toFixed(2)}</span>
+              </button>
             ))}
           </div>
-          {error && <p className="text-center text-amber-300">{error}</p>}
-          <NumPad value={pin} onChange={setPin} />
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={pin.length !== 4 || checking}
-            onClick={confirm}
-          >
-            {checking ? "Checking…" : `Confirm GHS ${service?.price.toFixed(2)}`}
-          </button>
-        </div>
+        </>
       )}
-    </div>
-  );
-}
 
-function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{children}</div>;
-}
+      {step === "payment" && service && (
+        <>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="btn-secondary px-4"
+              onClick={() => setStep("service")}
+            >
+              ←
+            </button>
+            <div>
+              <h1 className="text-xl font-semibold">How did they pay?</h1>
+              <p className="text-sm text-gray-400">
+                {service.wash_type} · GHS {service.price.toFixed(2)}
+              </p>
+            </div>
+          </div>
 
-function StepHeader({
-  step,
-  attendant,
-  service,
-  method,
-  onBack
-}: {
-  step: Step;
-  attendant: Attendant | null;
-  service: WashService | null;
-  method: PaymentMethod | null;
-  onBack: () => void;
-}) {
-  const titles: Record<Exclude<Step, "done">, string> = {
-    attendant: "Who washed it?",
-    service: "Which wash?",
-    payment: "How did they pay?",
-    pin: "Confirm with PIN"
-  };
-
-  return (
-    <div className="flex items-center gap-3">
-      {step !== "attendant" && (
-        <button type="button" className="btn-secondary px-4" onClick={onBack}>
-          ←
-        </button>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {paymentMethods.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                className="tile"
+                disabled={saving}
+                onClick={() => void record(service, m.value)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
-      <div>
-        <h1 className="text-xl font-semibold">{titles[step as Exclude<Step, "done">]}</h1>
-        <p className="text-sm text-gray-400">
-          {[attendant?.name, service?.wash_type, method].filter(Boolean).join(" · ") ||
-            "New wash"}
-        </p>
-      </div>
     </div>
   );
 }

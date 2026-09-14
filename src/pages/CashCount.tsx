@@ -3,12 +3,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, queueCashCount, transactionsForLocalDate } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
 import { sync } from "../lib/sync";
+import type { Attendant } from "../types";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function CashCount() {
+export default function CashCount({ attendant }: { attendant: Attendant }) {
   const shiftDate = todayIso();
 
   const settings = useLiveQuery(() => db.settings.get("current"), []);
@@ -29,7 +30,7 @@ export default function CashCount() {
   );
   const latestCount = countsToday[countsToday.length - 1] ?? null;
 
-  const [countedBy, setCountedBy] = useState("");
+  const [countedBy, setCountedBy] = useState(attendant.name);
   const [actual, setActual] = useState("");
   const [notes, setNotes] = useState("");
   const [correcting, setCorrecting] = useState(false);
@@ -44,12 +45,11 @@ export default function CashCount() {
     [todaysTxns]
   );
 
-  // Shown to the manager so the count is a real comparison rather than a
-  // number typed into a void. The server recomputes this independently during
-  // reconciliation, so a wrong `expected` here cannot hide a cash variance.
+  // Still recorded on the row — the server recomputes it independently during
+  // reconciliation, so what is stored here can never hide a variance — but it
+  // is never shown on this screen. See the note by the form below.
   const expected = cashTaken + openingFloat;
   const actualNumber = Number.parseFloat(actual);
-  const variance = Number.isFinite(actualNumber) ? actualNumber - expected : null;
 
   const submit = async () => {
     if (!Number.isFinite(actualNumber) || countedBy.trim().length === 0) return;
@@ -84,8 +84,7 @@ export default function CashCount() {
         <p className="text-5xl">✓</p>
         <p className="text-2xl font-semibold">Cash count recorded for {shiftDate}</p>
         <p className="text-gray-400">
-          Counted GHS {latestCount.actual.toFixed(2)} against GHS{" "}
-          {latestCount.expected.toFixed(2)} expected · counted by{" "}
+          Counted GHS {latestCount.actual.toFixed(2)} · counted by{" "}
           {latestCount.counted_by}
         </p>
 
@@ -131,7 +130,7 @@ export default function CashCount() {
         <p className="text-sm text-gray-400">
           {correcting
             ? `${shiftDate} · replaces the count of GHS ${latestCount?.actual.toFixed(2)}`
-            : `${shiftDate} · count the drawer with a second person present, and move anything above the float to the safe`}
+            : `${shiftDate} · count the drawer, then move anything above the float to the safe`}
         </p>
       </div>
 
@@ -151,22 +150,26 @@ export default function CashCount() {
         </div>
       )}
 
+      {/* The expected figure is deliberately NOT shown.
+          Counting the drawer and then being told what it "should" be invites
+          typing the expected number instead of the counted one, and a count
+          that agrees with the POS by construction checks nothing. The server
+          recomputes expected during reconciliation and reports the variance
+          there, where the person counting cannot influence it.
+          The opening float stays: the counter needs it to know how much to
+          leave in the drawer. */}
       <dl className="grid grid-cols-2 gap-3 rounded-xl bg-gray-800 p-4 text-sm">
-        <dt className="text-gray-400">Opening float</dt>
+        <dt className="text-gray-400">Opening float (leave this in the drawer)</dt>
         <dd className="text-right">GHS {openingFloat.toFixed(2)}</dd>
-        <dt className="text-gray-400">Cash washes logged today</dt>
-        <dd className="text-right">GHS {cashTaken.toFixed(2)}</dd>
-        <dt className="font-medium">Expected in drawer</dt>
-        <dd className="text-right font-medium">GHS {expected.toFixed(2)}</dd>
       </dl>
 
       <label className="flex flex-col gap-2">
-        <span className="text-sm text-gray-400">Counted by (both names)</span>
+        <span className="text-sm text-gray-400">Counted by</span>
         <input
           className="min-h-touch rounded-xl border border-gray-700 bg-gray-800 px-4 text-lg"
           value={countedBy}
           onChange={(e) => setCountedBy(e.target.value)}
-          placeholder="e.g. Ama & Kofi"
+          placeholder="Who counted the drawer"
         />
       </label>
 
@@ -181,19 +184,6 @@ export default function CashCount() {
         />
       </label>
 
-      {variance !== null && (
-        <p
-          className={`rounded-xl p-3 text-center text-lg ${
-            Math.abs(variance) < 0.005
-              ? "bg-emerald-900/40 text-emerald-200"
-              : "bg-amber-900/40 text-amber-100"
-          }`}
-        >
-          {Math.abs(variance) < 0.005
-            ? "Drawer balances"
-            : `${variance > 0 ? "Over" : "Short"} by GHS ${Math.abs(variance).toFixed(2)}`}
-        </p>
-      )}
 
       <label className="flex flex-col gap-2">
         <span className="text-sm text-gray-400">

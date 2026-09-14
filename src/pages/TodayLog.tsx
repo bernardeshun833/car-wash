@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import NumPad from "../components/NumPad";
 import { db, queueTransaction, transactionsForLocalDate } from "../lib/db";
 import { getBranchId, getDeviceId } from "../lib/device";
-import { verifyPin } from "../lib/pin";
 import { sync } from "../lib/sync";
 import type { Attendant, QueuedTransaction } from "../types";
 
@@ -99,11 +97,7 @@ export default function TodayLog() {
       </ul>
 
       {voiding && (
-        <VoidDialog
-          txn={voiding}
-          attendant={attendants.find((a) => a.id === voiding.attendant_id) ?? null}
-          onClose={() => setVoiding(null)}
-        />
+        <VoidDialog txn={voiding} onClose={() => setVoiding(null)} />
       )}
     </div>
   );
@@ -113,30 +107,23 @@ export default function TodayLog() {
  * A void never removes the original row — it appends a negative correction
  * that points at it. Both stay in the log, which is the whole point: an entry
  * that was cancelled is visible as a cancellation rather than as an absence.
+ *
+ * No PIN here any more: the app was unlocked with one, and asking the same
+ * person for the same four digits a moment later is friction that buys
+ * nothing. The confirmation step remains, because a void is worth a
+ * deliberate second press.
  */
 function VoidDialog({
   txn,
-  attendant,
   onClose
 }: {
   txn: QueuedTransaction;
-  attendant: Attendant | null;
   onClose: () => void;
 }) {
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const confirm = async () => {
-    if (!attendant) return;
-    setChecking(true);
-    const ok = await verifyPin(pin, attendant);
-    if (!ok) {
-      setChecking(false);
-      setPin("");
-      setError("Incorrect PIN");
-      return;
-    }
+    setSaving(true);
 
     await queueTransaction({
       id: crypto.randomUUID(),
@@ -150,7 +137,7 @@ function VoidDialog({
       device_id: getDeviceId()
     });
 
-    setChecking(false);
+    setSaving(false);
     onClose();
     void sync();
   };
@@ -164,13 +151,6 @@ function VoidDialog({
             This adds a correction entry. The original stays in the record.
           </p>
         </div>
-        <p className="text-sm">
-          {attendant
-            ? `${attendant.name}, enter your PIN`
-            : "Attendant not found on this device"}
-        </p>
-        {error && <p className="text-amber-300">{error}</p>}
-        <NumPad value={pin} onChange={setPin} />
         <div className="flex gap-3">
           <button type="button" className="btn-secondary flex-1" onClick={onClose}>
             Cancel
@@ -178,10 +158,10 @@ function VoidDialog({
           <button
             type="button"
             className="btn-primary flex-1"
-            disabled={pin.length !== 4 || checking || !attendant}
+            disabled={saving}
             onClick={confirm}
           >
-            {checking ? "Checking…" : "Void"}
+            {saving ? "Voiding…" : "Void"}
           </button>
         </div>
       </div>

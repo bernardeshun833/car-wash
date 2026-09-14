@@ -25,12 +25,18 @@ export const DEMO_MODE =
 const DEMO_BRANCH = "00000000-0000-0000-0000-00000000b1a1";
 
 /**
- * The same PBKDF2 hashes as supabase/seed.sql, so the demo PINs match the dev
- * PINs and there is one set of numbers to remember. These are public and
- * always have been — they protect nothing here, and a real deployment gets its
- * own hashes from `npm run hash-pin`.
+ * One attendant, because one person runs the site today.
  *
- * PINs: Kofi 1234 · Ama 2345 · Yaw 3456
+ * The list is deliberately still a list: add a second row and the lock screen
+ * grows a "who is on shift?" step on its own, with no code change. The real
+ * headcount is still unconfirmed, so the app should not care either way.
+ *
+ * The hash below is the same PBKDF2 hash as supabase/seed.sql, so the demo PIN
+ * and the dev PIN match and there is one number to remember. It is public and
+ * always has been — it protects nothing here, and a real deployment gets its
+ * own from `npm run hash-pin`.
+ *
+ * PIN: 1234
  */
 const DEMO_ATTENDANTS: Attendant[] = [
   {
@@ -39,24 +45,6 @@ const DEMO_ATTENDANTS: Attendant[] = [
     name: "Kofi Asante",
     pin_hash: "55fb4e5859ddb05bfd8ccfdbab4a629d01909191cdb4ec285f6da3489df373b1",
     pin_salt: "a1b2c3d4e5f60718",
-    pin_iterations: 200000,
-    active: true
-  },
-  {
-    id: "22222222-2222-2222-2222-222222222222",
-    branch_id: DEMO_BRANCH,
-    name: "Ama Boateng",
-    pin_hash: "205b07ae3e8007ad5d7bdbbbfa966acd37904083d4c49908a7828a672c174aa5",
-    pin_salt: "b2c3d4e5f6071829",
-    pin_iterations: 200000,
-    active: true
-  },
-  {
-    id: "33333333-3333-3333-3333-333333333333",
-    branch_id: DEMO_BRANCH,
-    name: "Yaw Owusu",
-    pin_hash: "93400b70080840be011838a4e1fe4acb9ee5418cf3fe6b9c2dcbb9570960a258",
-    pin_salt: "c3d4e5f607182930",
     pin_iterations: 200000,
     active: true
   }
