@@ -1,0 +1,40 @@
+# Tests, typecheck and build on every push.
+#
+# Deployment is Cloudflare's job — it builds from `main` and serves the app on
+# the custom domain. This workflow exists so a broken commit is caught here,
+# before Cloudflare publishes it to the phone in the yard.
+#
+# (There was a GitHub Pages deploy workflow here. It was removed once
+# Cloudflare was live: two deployment targets for one app is one too many, and
+# the Pages job failed on every push because Pages was never enabled for the
+# repo, which meant a failure email for a deploy nobody needed.)
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The reconciliation rules and the counting logic. Pure, no backend.
+      - run: npm test
+
+      - run: npm run lint
+
+      # Both builds: the real one Cloudflare runs, and the demo one, so a
+      # change that breaks only the demo path does not reach the phone.
+      - run: npm run build
+      - run: npm run build:demo

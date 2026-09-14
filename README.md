@@ -142,9 +142,11 @@ npm run dev:demo  # the whole tablet app, no Supabase, no account, no keys
 Demo mode builds the attendant and price lists into the app and keeps
 everything on the device. It is for judging the screens on a real phone before
 committing to any infrastructure; it cannot show the nightly report, which runs
-server-side. Pushing to this branch publishes it to GitHub Pages (enable
-Settings → Pages → Source: GitHub Actions once), which matters because a phone
-needs HTTPS for PIN verification to work at all.
+server-side.
+
+The deployed site is built by Cloudflare from `main` and served on its own
+domain. HTTPS is not optional here: browsers withhold `crypto.subtle` outside a
+secure context, so PIN verification cannot run over a plain LAN address.
 
 Full instructions, including the phone and the local Supabase stack, are in
 `docs/testing.md`.

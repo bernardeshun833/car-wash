@@ -5,7 +5,7 @@ Three ways, in increasing order of setup. Start at the top.
 | | Needs | Tests |
 |---|---|---|
 | 1. Logic tests | nothing | the reconciliation rules |
-| 2. Demo on your phone | nothing (GitHub Pages) or a laptop | the screens, on a real device |
+| 2. Demo on your phone | the deployed site, or a laptop | the screens, on a real device |
 | 3. Full local stack | Docker + Supabase CLI | everything, end to end |
 
 ---
@@ -41,23 +41,15 @@ reconciliation — those run server-side. That half is covered by `npm test`.
 
 PINs: **Kofi 1234 · Ama 2345 · Yaw 3456**
 
-### The easy way — GitHub Pages (no laptop needed after setup)
+### The easy way — the deployed site
 
-One-time: on GitHub, go to the repo → **Settings → Pages → Source: GitHub
-Actions**. That's it.
+Cloudflare builds `main` and serves it on the custom domain. Push, wait a
+minute, reload. With no Supabase environment variables set, what gets built is
+the demo.
 
-Every push then builds the demo and publishes it to:
-
-```
-https://<your-username>.github.io/car-wash/
-```
-
-Open that on the phone → browser menu → **Add to Home screen**. It installs as
-a proper app: full screen, no address bar, works with the phone in aeroplane
+Open it on the phone → browser menu → **Add to Home screen**. It installs as a
+proper app: full screen, no address bar, works with the phone in aeroplane
 mode.
-
-To publish without pushing: repo → **Actions → Deploy demo to GitHub Pages →
-Run workflow**.
 
 ### The laptop way — for fast iteration
 
@@ -75,8 +67,8 @@ is reachable from your phone on the same Wi-Fi.
 2. **The phone will hit errors over `http://192.168.x.x`.** Browsers only give
    `crypto.subtle` and `crypto.randomUUID` to a "secure context" — HTTPS or
    localhost. A LAN IP is neither, so PIN checking breaks. This is why the
-   GitHub Pages route exists; use the laptop browser for iteration and Pages
-   for anything you actually tap through on the phone.
+   the deployed site exists; use the laptop browser for iteration and the
+   deployed URL for anything you actually tap through on the phone.
 
 On the laptop itself, `http://localhost:5173` counts as secure and works fully
 — Chrome DevTools (F12) → the device toolbar gives you a phone-sized view.
