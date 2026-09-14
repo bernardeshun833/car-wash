@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-gray-900 text-gray-100 antialiased;
+    /* The tablet is a dedicated POS device — kill the behaviours that make a
+       browser feel like a browser. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+  }
+}
+
+@layer components {
+  .tile {
+    @apply flex min-h-touch items-center justify-center rounded-xl border border-gray-700
+           bg-gray-800 px-4 py-5 text-center text-lg font-medium
+           transition-colors active:bg-gray-700;
+  }
+
+  .tile-selected {
+    @apply border-emerald-400 bg-emerald-900/40 text-emerald-100;
+  }
+
+  .btn-primary {
+    @apply flex min-h-touch w-full items-center justify-center rounded-xl bg-emerald-600
+           px-6 text-xl font-semibold text-white disabled:bg-gray-700 disabled:text-gray-500;
+  }
+
+  .btn-secondary {
+    @apply flex min-h-touch items-center justify-center rounded-xl border border-gray-600
+           px-6 text-lg font-medium text-gray-200;
+  }
+}
