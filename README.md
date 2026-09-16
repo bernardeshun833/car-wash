@@ -38,8 +38,9 @@ Most of this was adaptation, and it is worth being precise about which parts.
 
 | | |
 |---|---|
-| **Transferred as-is** | Offline-first PWA with an IndexedDB queue and a sync engine; append-only records where corrections are new rows; PIN-per-transaction; the severity-tiered reconciliation model and the daily report that arrives clean or not; the cash SOP assumptions (capped float, excess to the safe, two-person count at close). |
+| **Transferred as-is** | Offline-first PWA with an IndexedDB queue and a sync engine; append-only records where corrections are new rows; the severity-tiered reconciliation model and the daily report that arrives clean or not; the cash SOP assumptions (capped float, excess to the safe). |
 | **Renamed and reshaped** | `barbers` → `attendants`, `services` → `vehicles_or_services` (`wash_type`), "cuts" → "washes" throughout. `branch_id` added to every table. Settings moved from one global row to per-branch. Append-only enforcement widened from `transactions` alone to every table that records an event. |
+| **Changed on contact with the yard** | PIN moved from per-transaction to once at unlock — one attendant typing the same four digits for every car was friction that pushed logging to "later, from memory", which is worth nothing to the reconciliation. The cash count went blind (no expected figure on screen). The count itself is correctable, because append-only should not mean a typo is permanent. |
 | **Genuinely new** | `vehicle_count_events` and everything behind it — the counting interface, the zone tracker, the agent, the ingest endpoint — plus the fourth reconciliation check that compares vehicles counted against washes logged. The barbershop has no equivalent and could not have one. |
 
 ## Cash only for now
@@ -153,7 +154,7 @@ npm run count-agent      # runs against the simulated feed
 
 ```bash
 npm install
-npm test          # the reconciliation logic — 83 tests, no backend needed
+npm test          # the reconciliation logic — 93 tests, no backend needed
 npm run dev:demo  # the whole tablet app, no Supabase, no account, no keys
 ```
 
@@ -191,7 +192,7 @@ and tested without a backend or a camera.
 
 ```bash
 supabase link --project-ref <car-wash-project-ref>   # NOT the barbershop's
-supabase db push                                     # migrations 0001–0005
+supabase db push                                     # migrations 0001–0006
 supabase db execute --file supabase/seed.sql         # dev/demo data only
 
 supabase secrets set \

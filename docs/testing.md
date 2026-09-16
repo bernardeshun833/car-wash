@@ -17,9 +17,9 @@ npm install
 npm test
 ```
 
-83 tests. No database, no camera, no network, no accounts. This is what proves
+93 tests. No database, no camera, no network, no accounts. This is what proves
 the parts nobody can eyeball: MoMo matching, cash variance, the vehicle-count
-tiers, the cash-count correction rules.
+tiers, the cash-count correction rules, and the owner-history date handling.
 
 ```bash
 npm run test:watch                              # re-runs as you edit
@@ -39,7 +39,7 @@ with wet hands, is the PIN step quick enough with a queue of cars, is the cash
 count screen readable in the sun. It **cannot** show the nightly report or the
 reconciliation — those run server-side. That half is covered by `npm test`.
 
-PINs: **Kofi 1234 · Ama 2345 · Yaw 3456**
+PIN: **1234** (one attendant, Kofi Asante)
 
 ### The easy way — the deployed site
 
@@ -75,13 +75,18 @@ On the laptop itself, `http://localhost:5173` counts as secure and works fully
 
 ### Worth trying in demo mode
 
-- **Log a few washes.** Attendant → wash type → PIN. Note there is no payment
-  step: the wash is cash-only, so a single-option screen is skipped.
+- **Unlock with 1234.** It opens on the fourth digit; there is no button to
+  press. Everything is locked until it does.
+- **Log a few washes** — one tap on the price is the whole thing. No attendant
+  step (whoever unlocked is on shift), no per-wash PIN, and no payment step,
+  because cash-only means there is nothing to choose.
 - **Void one** from the Today tab. The original stays, struck through, with a
   correction beside it. Nothing is ever deleted.
 - **Cash count**, then **Record a corrected count** — the flow that used to be
   impossible. The earlier figure stays visible.
 - **Aeroplane mode.** Everything keeps working. That is the whole design.
+- **History** says it needs the live system. That is correct: past months are
+  read from the database behind the owner's PIN, and the demo has neither.
 - **Reset** in the top bar clears the demo and starts over.
 
 ---
@@ -93,7 +98,7 @@ Needs Docker Desktop and the Supabase CLI
 
 ```bash
 supabase start        # prints API URL, anon key, service_role key
-supabase db reset     # applies migrations 0001–0005 and seed.sql
+supabase db reset     # applies migrations 0001–0006 and seed.sql
 ```
 
 Create `.env.local`:
@@ -114,6 +119,26 @@ list saved yet."
 ```bash
 npm run dev
 ```
+
+### Before the cron jobs can fire
+
+The scheduled jobs read their URL and key from Vault (migration 0005). Store
+them once, or the nightly job fires on time and fails with nothing to read:
+
+```sql
+select vault.create_secret('http://127.0.0.1:54321', 'project_url');
+select vault.create_secret('<service-role-key from supabase start>', 'service_role_key');
+```
+
+### The owner history
+
+```sql
+select set_owner_pin('4321');
+```
+
+Then open the History tab and enter it. Ten wrong PINs locks the function for
+fifteen minutes — that is the rate limit doing its job, not a bug. See
+`docs/history.md`.
 
 ### Run a night of reconciliation
 
