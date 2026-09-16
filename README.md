@@ -104,6 +104,24 @@ or not** — a report that only arrives when something is wrong teaches the read
 that silence means fine, and silence is exactly what a dead device produces.
 WhatsApp fires only at MEDIUM or above.
 
+## History, for the owner
+
+Previous months in the app rather than the Supabase dashboard: takings, each
+day's washes and voids, vehicles counted, the nightly job's verdict, and a tap
+on any day for the individual washes.
+
+Behind the **owner's** PIN, set once in the SQL editor:
+
+```sql
+select set_owner_pin('<your PIN>');
+```
+
+Not the shift PIN, and not merely a hidden tab. The PIN is checked in the
+database and never on the device; the device's own read of `transactions`
+narrows to two days; and synced rows older than that are dropped from the phone
+on every sync. See `docs/history.md` for why each of those three is needed for
+the other two to mean anything.
+
 ## The vehicle counter
 
 The piece with no barbershop equivalent. See `docs/vehicle-counting.md` for the

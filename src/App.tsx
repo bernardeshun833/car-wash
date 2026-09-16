@@ -5,6 +5,7 @@ import { useSyncStatus } from "./hooks/useSyncStatus";
 import CashCount from "./pages/CashCount";
 import TodayLog from "./pages/TodayLog";
 import TransactionEntry from "./pages/TransactionEntry";
+import History from "./pages/History";
 import { db } from "./lib/db";
 import { supabase } from "./lib/supabase";
 import { DEMO_MODE, resetDemoData, seedDemoData } from "./lib/demo";
@@ -14,7 +15,10 @@ import type { Attendant } from "./types";
 const TABS = [
   { to: "/", label: "New wash" },
   { to: "/today", label: "Today" },
-  { to: "/cash-count", label: "Cash count" }
+  { to: "/cash-count", label: "Cash count" },
+  // Shown to everyone, opened by nobody without the owner's PIN. Hiding it
+  // would be theatre — the lock is in the database (migration 0006).
+  { to: "/history", label: "History" }
 ];
 
 /**
@@ -147,6 +151,7 @@ export default function App() {
           <Route path="/" element={<TransactionEntry attendant={attendant} />} />
           <Route path="/today" element={<TodayLog />} />
           <Route path="/cash-count" element={<CashCount attendant={attendant} />} />
+          <Route path="/history" element={<History />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

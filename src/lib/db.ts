@@ -80,3 +80,28 @@ export async function transactionsForLocalDate(
   const all = await db.transactions.toArray();
   return all.filter((t) => t.created_at_local.slice(0, 10) === isoDate);
 }
+
+/**
+ * Drop synced washes older than two days from this device.
+ *
+ * The Today screen needs today, and a void needs the row it corrects, so two
+ * days is the whole working set. Everything beyond it is already on the server
+ * and only reachable there through the owner's PIN (migration 0006) — leaving
+ * a full copy in IndexedDB would make that lock decorative, because devtools
+ * is one tap away on any browser.
+ *
+ * Only synced rows go. A row that has not reached the server is the one thing
+ * this device holds that nothing else does, and it stays until it has.
+ */
+export async function pruneSyncedHistory(days = 2): Promise<number> {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const stale = await db.transactions
+    .where("sync_state")
+    .equals("synced")
+    .filter((t) => t.created_at_local < cutoff)
+    .primaryKeys();
+
+  if (stale.length > 0) await db.transactions.bulkDelete(stale);
+  return stale.length;
+}
