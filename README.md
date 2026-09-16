@@ -186,12 +186,23 @@ supabase functions deploy nightly-reconciliation
 supabase functions deploy momo-sync      # only once MoMo is live
 ```
 
-Migration 0005 schedules the jobs with pg_cron. Before it runs, set the two
-database settings it reads:
+Migration 0005 schedules the jobs with pg_cron. Before it runs, store the two
+secrets it reads in Vault:
 
 ```sql
-alter database postgres set app.settings.project_url = 'https://<ref>.supabase.co';
-alter database postgres set app.settings.service_role_key = '<service-role-key>';
+select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+select vault.create_secret('<service-role-key>', 'service_role_key');
+```
+
+(Not `alter database postgres set app.settings.*` — that needs superuser, which
+hosted Supabase does not grant, and the nightly job would fire on time with
+nothing to read. A reconciliation that never runs looks exactly like a night
+with nothing to report.)
+
+Check it actually fired:
+
+```sql
+select * from cron.job_run_details order by start_time desc limit 5;
 ```
 
 Then set the owner's contact details and any threshold you want to tune:

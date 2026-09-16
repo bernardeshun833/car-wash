@@ -113,7 +113,18 @@ export default function TransactionEntry({ attendant }: { attendant: Attendant }
         <p className="rounded-xl bg-red-900/60 p-3 text-red-100">{error}</p>
       )}
 
-      {step === "service" && (
+      {step === "service" && services.length === 0 && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className="text-lg font-medium">No price list on this phone yet</p>
+          <p className="max-w-sm text-gray-400">
+            It arrives on the first sync. Connect to the internet once and it
+            will be saved here for good — after that the app works with no
+            signal at all.
+          </p>
+        </div>
+      )}
+
+      {step === "service" && services.length > 0 && (
         <>
           <h1 className="text-xl font-semibold">Which wash?</h1>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

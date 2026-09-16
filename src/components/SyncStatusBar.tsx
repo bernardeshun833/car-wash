@@ -1,38 +1,25 @@
 import type { SyncStatus } from "../hooks/useSyncStatus";
 
-function relativeTime(date: Date | null): string {
-  if (!date) return "never";
-  const minutes = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m ago`;
-}
-
 /**
- * Deliberately shows the queue depth rather than a generic "syncing" spinner:
- * the manager should be able to see at a glance how many washes exist only on
- * this tablet, because that is exactly what is lost if the device goes.
+ * Shown only when this device is holding washes the server has not got.
+ *
+ * A bar that is always on screen stops being read within a week, so the day it
+ * matters it is not read either — and "Offline" with an empty queue was never
+ * that day: nothing is at risk, and saying so out loud only teaches the
+ * attendant to distrust a phone working exactly as designed. What is left is
+ * the count of washes that exist only here, which is the one thing anyone can
+ * act on: keep the phone safe until it syncs.
  */
 export default function SyncStatusBar({ status }: { status: SyncStatus }) {
-  const stale =
-    !status.lastSyncedAt || Date.now() - status.lastSyncedAt.getTime() > 30 * 60 * 1000;
-
-  const tone = !status.online
-    ? "bg-amber-900/60 text-amber-100"
-    : stale || status.pending > 0
-      ? "bg-sky-900/60 text-sky-100"
-      : "bg-gray-800 text-gray-300";
+  if (status.pending === 0) return null;
 
   return (
-    <div className={`flex items-center justify-between px-4 py-2 text-sm ${tone}`}>
+    <div className="flex items-center justify-between px-4 py-2 text-sm bg-sky-900/60 text-sky-100">
       <span className="font-medium">
-        {status.online ? "Online" : "Offline — washes are being saved on this tablet"}
+        {status.pending} {status.pending === 1 ? "wash" : "washes"} saved on this
+        phone only
       </span>
-      <span>
-        {status.pending > 0 ? `${status.pending} waiting to sync · ` : ""}
-        synced {relativeTime(status.lastSyncedAt)}
-      </span>
+      <span>{status.online ? "sending…" : "will send when back online"}</span>
     </div>
   );
 }
