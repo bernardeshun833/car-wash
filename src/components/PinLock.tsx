@@ -39,20 +39,34 @@ export default function PinLock({
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
-  const submit = async () => {
-    if (!attendant) return;
-    setChecking(true);
+  /**
+   * The fourth digit is the whole instruction — there is nothing left to
+   * confirm, so there is no button to press. Verification fires from the
+   * keypad handler rather than an effect, so it runs exactly once per attempt
+   * and is not re-entered while a check is in flight.
+   */
+  const onDigits = (next: string) => {
+    if (checking || !attendant) return;
+
     setError(null);
+    setPin(next);
+    if (next.length !== 4) return;
 
-    const ok = await verifyPin(pin, attendant);
-    setChecking(false);
-    setPin("");
+    void (async () => {
+      setChecking(true);
+      const ok = await verifyPin(next, attendant);
+      setChecking(false);
 
-    if (ok) {
-      onUnlock(attendant);
-    } else {
-      setError("Wrong PIN");
-    }
+      if (ok) {
+        onUnlock(attendant);
+        return;
+      }
+
+      // Cleared, so the next attempt starts from an empty row of dots rather
+      // than leaving someone to work out which digit to delete.
+      setPin("");
+      setError("That PIN is not right — try again");
+    })();
   };
 
   if (attendants.length === 0) {
@@ -100,18 +114,17 @@ export default function PinLock({
         ))}
       </div>
 
-      {error && <p className="text-center text-amber-300">{error}</p>}
-
-      <NumPad value={pin} onChange={setPin} />
-
-      <button
-        type="button"
-        className="btn-primary"
-        disabled={pin.length !== 4 || checking}
-        onClick={submit}
+      {/* Fixed height: the message appearing and clearing must not shift the
+          keypad under a thumb mid-attempt. */}
+      <p
+        className="min-h-[1.5rem] text-center text-amber-300"
+        role="status"
+        aria-live="polite"
       >
-        {checking ? "Checking…" : "Unlock"}
-      </button>
+        {checking ? "Checking…" : error}
+      </p>
+
+      <NumPad value={pin} onChange={onDigits} />
 
       {attendants.length > 1 && (
         <button
